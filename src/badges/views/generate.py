@@ -14,6 +14,7 @@ from registration.decorators import archived_not_available
 from registration.views.utils import nopermission, get_or_404
 from registration.models import Event
 from registration.utils import escape_filename
+from registration.permissions import has_access, ACCESS_BADGES_GENERATE
 
 from .utils import notactive
 
@@ -57,7 +58,7 @@ def index(request, event_url_name):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active
@@ -89,7 +90,7 @@ def tasklist(request, event_url_name):
         return render(request, 'badges/tasklist.html', context)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active
@@ -128,7 +129,7 @@ def warnings(request, event_url_name, job_pk):
     event, job, shift, helper = get_or_404(event_url_name, job_pk)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active
@@ -147,11 +148,25 @@ def warnings(request, event_url_name, job_pk):
 
 @login_required
 @archived_not_available
-def generate(request, event_url_name, job_pk=None, generate_all=False):
+def generate(request, event_url_name, job_pk=None, generate=None, skip_printed=True):
+    """
+    Schedule a job to generates badges and handle the "frontend things".
+
+    Parameters:
+    :param job_pk: If set, the badges for this job will be generated
+    :param generate: `job`, `special` or `all`
+    :param skip_printed: Skip already registered badges
+    """
     event, job, shift, helper = get_or_404(event_url_name, job_pk)
 
+    # validate generate parameter
+    if generate not in ["job", "special", "all"]:
+        raise ValueError("Invalid parameter generate")
+    if generate == "job" and not job:
+        raise ValueError("Job missing")
+
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active
@@ -160,19 +175,25 @@ def generate(request, event_url_name, job_pk=None, generate_all=False):
 
     # TODO: check if possible, show error page
 
-    # skip already printed badges?
-    skip_printed = event.badge_settings.barcodes and not generate_all
+    # if we do not have barcodes, we cannot skip printed badges
+    if not event.badge_settings.barcodes:
+        skip_printed = False
 
     # start generation
-    result = tasks.generate_badges.delay(event.pk, job_pk, skip_printed)
+    result = tasks.generate_badges.delay(event.pk, job_pk, generate, skip_printed)
 
-    # name
+    # name to be displayed in web interface
     name = None
     if job:
         if skip_printed:
             name = _("{} (only unregistered)").format(job.name)
         else:
             name = _("{} (all)").format(job.name)
+    elif generate == "special":
+        if skip_printed:
+            name = _("Special badges (only unregistered)")
+        else:
+            name = _("Special badges (all)")
     else:
         if skip_printed:
             name = _("All unregistered badges")
@@ -197,7 +218,7 @@ def failed(request, event_url_name, task_id):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active
@@ -232,7 +253,7 @@ def download(request, event_url_name, task_id):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_BADGES_GENERATE):
         return nopermission(request)
 
     # check if badge system is active

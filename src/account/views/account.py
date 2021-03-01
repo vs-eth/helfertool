@@ -1,9 +1,8 @@
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth import update_session_auth_hash, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
-from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
@@ -12,10 +11,10 @@ from django.utils.translation import ugettext as _
 from registration.views.utils import nopermission
 
 from ..forms import CreateUserForm, EditUserForm
-from ..templatetags.permissions import has_adduser_group
+from ..templatetags.globalpermissions import has_adduser_group
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.account")
 
 
 @login_required
@@ -47,7 +46,7 @@ def add_user(request):
 @login_required
 def view_user(request, user_pk=None):
     if user_pk:
-        user = get_object_or_404(User, pk=user_pk)
+        user = get_object_or_404(get_user_model(), pk=user_pk)
     else:
         user = request.user
 
@@ -80,7 +79,7 @@ def view_user(request, user_pk=None):
 
             return redirect('account:view_user', user.pk)
     else:
-        # user from LDAP
+        # user from LDAP/OpenID Connect
         pw_form = None
 
     context = {
@@ -96,7 +95,7 @@ def edit_user(request, user_pk):
     if not request.user.is_superuser:
         return nopermission(request)
 
-    changed_user = get_object_or_404(User, pk=user_pk)
+    changed_user = get_object_or_404(get_user_model(), pk=user_pk)
 
     form = EditUserForm(request.POST or None, instance=changed_user, admin_user=request.user)
 
@@ -126,12 +125,12 @@ def list_users(request):
     # get users based on search term
     search = request.GET.get("search")
     if search:
-        all_users = User.objects.filter(Q(username__icontains=search) |
-                                        Q(first_name__icontains=search) |
-                                        Q(last_name__icontains=search) |
-                                        Q(email__icontains=search)).order_by('last_name')
+        all_users = get_user_model().objects.filter(Q(username__icontains=search)
+                                                    | Q(first_name__icontains=search)
+                                                    | Q(last_name__icontains=search)
+                                                    | Q(email__icontains=search)).order_by('last_name')
     else:
-        all_users = User.objects.all().order_by("last_name")
+        all_users = get_user_model().objects.all().order_by("last_name")
 
     # apply filters
     filterstr = request.GET.get("filter")
@@ -143,7 +142,7 @@ def list_users(request):
         all_users = all_users.filter(groups__name__in=[settings.GROUP_ADDEVENT, ])
     elif filterstr == "adduser":
         all_users = all_users.filter(groups__name__in=[settings.GROUP_ADDUSER, ])
-    elif filterstr == "sendnews":
+    elif filterstr == "sendnews" and settings.FEATURES_NEWSLETTER:
         all_users = all_users.filter(groups__name__in=[settings.GROUP_SENDNEWS, ])
     else:
         filterstr = ""

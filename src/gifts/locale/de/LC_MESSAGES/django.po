@@ -7,53 +7,80 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-03-01 14:20+0100\n"
-"PO-Revision-Date: 2019-02-03 11:53+0100\n"
-"Last-Translator: Sven Hertle <hertle@fs.tum.de>\n"
+"POT-Creation-Date: 2021-01-10 19:58+0100\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
 "Language-Team: \n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 2.2.1\n"
+"X-Generator: Poedit 2.3.1\n"
 
-#: gifts/forms/helpersgifts.py:23 gifts/templates/gifts/helper.html:46
-msgid "Delivered"
-msgstr "Ausgegeben"
+#: gifts/forms/fields.py:33
+msgid "Auto"
+msgstr "Auto"
 
-#: gifts/forms/helpersgifts.py:30 gifts/templates/gifts/helper.html:35
+#: gifts/forms/fields.py:37
+msgid "Unknown"
+msgstr "Unbekannt"
+
+#: gifts/forms/fields.py:41
 msgid "Present"
 msgstr "Anwesend"
+
+#: gifts/forms/fields.py:42
+msgid "Absent"
+msgstr "Abwesend"
+
+#: gifts/forms/helpersgifts.py:37 gifts/templates/gifts/helper.html:33
+msgid "Delivered"
+msgstr "Ausgegeben"
 
 #: gifts/models/deservedgiftset.py:22
 msgid "Helper got gift"
 msgstr "Helfer hat Geschenk erhalten"
 
 #: gifts/models/gift.py:10 gifts/models/set.py:14
-#: gifts/templates/gifts/list.html:10 gifts/templates/gifts/list.html:37
+#: gifts/templates/gifts/list.html:22 gifts/templates/gifts/list.html:49
 #: gifts/templates/gifts/list_deposit.html:11
 #: gifts/templates/gifts/list_shirts.html:29
 msgid "Name"
 msgstr "Name"
 
-#: gifts/models/helpersgifts.py:19 gifts/templates/gifts/list_deposit.html:12
+#: gifts/models/giftsettings.py:16
+msgid "Enable automatic presence for helpers"
+msgstr "Helfer automatisch auf anwesend setzen"
+
+#: gifts/models/giftsettings.py:17
+msgid ""
+"At the end of the shift, the helper is automatically set to present, unless "
+"the absence was reported."
+msgstr ""
+"Am Ende der Schicht werden die Helfer automatisch auf anwesend gesetzt, "
+"außer sie sind bereits als abwesend eingetragen."
+
+#: gifts/models/giftsettings.py:22
+msgid "Default deposit for a helper"
+msgstr "Standard Pfand für Helfer"
+
+#: gifts/models/helpersgifts.py:25 gifts/templates/gifts/list_deposit.html:12
 msgid "Deposit"
 msgstr "Pfand"
 
-#: gifts/models/helpersgifts.py:27
+#: gifts/models/helpersgifts.py:33
 msgid "Deposit returned"
 msgstr "Pfand zurückgegeben"
 
-#: gifts/models/helpersgifts.py:33
+#: gifts/models/helpersgifts.py:39
 msgid "Helper got her T-shirt"
 msgstr "Helfer hat T-Shirt erhalten"
 
-#: gifts/models/helpersgifts.py:38
+#: gifts/models/helpersgifts.py:44
 msgid "Buy a T-shirt for helper"
 msgstr "T-Shirt für Helfer kaufen"
 
-#: gifts/models/helpersgifts.py:43
+#: gifts/models/helpersgifts.py:49
 msgid "Deserved gifts"
 msgstr "Verdiente Geschenke"
 
@@ -61,8 +88,8 @@ msgstr "Verdiente Geschenke"
 msgid "Count"
 msgstr "Anzahl"
 
-#: gifts/models/set.py:19 gifts/templates/gifts/list.html:7
-#: gifts/templates/gifts/list.html:38 gifts/templates/gifts/not_active.html:6
+#: gifts/models/set.py:19 gifts/templates/gifts/list.html:19
+#: gifts/templates/gifts/list.html:50 gifts/templates/gifts/not_active.html:6
 msgid "Gifts"
 msgstr "Geschenke"
 
@@ -71,7 +98,7 @@ msgid "Delete gift"
 msgstr "Geschenk löschen"
 
 #: gifts/templates/gifts/delete_gift.html:13
-#: gifts/templates/gifts/edit_gift.html:6 gifts/templates/gifts/helper.html:72
+#: gifts/templates/gifts/edit_gift.html:6 gifts/templates/gifts/helper.html:59
 msgid "Gift"
 msgstr "Geschenk"
 
@@ -81,7 +108,7 @@ msgstr "Geschenksets, die dieses Geschenk verwenden"
 
 #: gifts/templates/gifts/delete_gift.html:28
 #: gifts/templates/gifts/delete_gift_set.html:28
-#: gifts/templates/gifts/list.html:23 gifts/templates/gifts/list.html:58
+#: gifts/templates/gifts/list.html:35 gifts/templates/gifts/list.html:70
 msgid "Delete"
 msgstr "Löschen"
 
@@ -100,40 +127,71 @@ msgstr "Beinhaltete Geschenke"
 
 #: gifts/templates/gifts/edit_gift.html:13
 #: gifts/templates/gifts/edit_gift_set.html:13
-#: gifts/templates/gifts/helper.html:90
-#: gifts/templates/gifts/set_present.html:19
+#: gifts/templates/gifts/list.html:15 gifts/templates/gifts/set_present.html:45
 msgid "Save"
 msgstr "Speichern"
 
-#: gifts/templates/gifts/helper.html:60
+#: gifts/templates/gifts/helper.html:45
 msgid "No gifts"
 msgstr "Keine Geschenke"
 
-#: gifts/templates/gifts/helper.html:73
-msgid "Given"
-msgstr "Ausgegeben"
+#: gifts/templates/gifts/helper.html:53
+msgid "Summary"
+msgstr "Zusammenfassung"
 
-#: gifts/templates/gifts/helper.html:74
+#: gifts/templates/gifts/helper.html:60
 msgid "Total"
 msgstr "Insgesamt"
 
-#: gifts/templates/gifts/list.html:5
-msgid "Manage gifts"
-msgstr "Geschenke verwalten"
+#: gifts/templates/gifts/helper.html:61
+msgid "Given"
+msgstr "Ausgegeben"
 
-#: gifts/templates/gifts/list.html:22 gifts/templates/gifts/list.html:57
+#: gifts/templates/gifts/helper.html:63
+msgid "Pending (with deposit)"
+msgstr "Ausstehend (mit Pfand)"
+
+#: gifts/templates/gifts/helper.html:65
+msgid "Including future shifts"
+msgstr "Inklusive zukünftige Schichten"
+
+#: gifts/templates/gifts/helper.html:68
+msgid "Pending"
+msgstr "Ausstehend"
+
+#: gifts/templates/gifts/helper.html:70
+msgid "Helper was present"
+msgstr "Helfer war anwesend"
+
+#: gifts/templates/gifts/helper.html:103 gifts/templates/gifts/helper.html:107
+msgid "All delivered"
+msgstr "Alles ausgegeben"
+
+#: gifts/templates/gifts/helper.html:124
+msgid "Set to default"
+msgstr "Auf Standard setzen"
+
+#: gifts/templates/gifts/list.html:5
+msgid "Gifts and presence settings"
+msgstr "Einstellungen für Geschenke und Anwesenheiten"
+
+#: gifts/templates/gifts/list.html:7
+msgid "General"
+msgstr "Allgemein"
+
+#: gifts/templates/gifts/list.html:34 gifts/templates/gifts/list.html:69
 msgid "Edit"
 msgstr "Bearbeiten"
 
-#: gifts/templates/gifts/list.html:31
+#: gifts/templates/gifts/list.html:43
 msgid "Add gift"
 msgstr "Geschenk hinzufügen"
 
-#: gifts/templates/gifts/list.html:34
+#: gifts/templates/gifts/list.html:46
 msgid "Gift sets"
 msgstr "Geschenksets"
 
-#: gifts/templates/gifts/list.html:66
+#: gifts/templates/gifts/list.html:78
 msgid "Add gift set"
 msgstr "Geschenkset hinzufügen"
 
@@ -170,23 +228,52 @@ msgid "The management of gifts is not actived."
 msgstr "Die Verwaltung von Geschenken ist nicht aktiviert."
 
 #: gifts/templates/gifts/set_present.html:5
-msgid "Attendance for shift"
+msgid "Presence for shift"
 msgstr "Anwesenheit für Schicht"
 
-#: gifts/templates/gifts/set_present.html:10
-msgid "Set all to attendant"
+#: gifts/templates/gifts/set_present.html:12
+msgid "Set all to auto"
+msgstr "Alle auf auto setzen"
+
+#: gifts/templates/gifts/set_present.html:16
+msgid "Set all to unknown"
+msgstr "Alle auf unbekannt setzen"
+
+#: gifts/templates/gifts/set_present.html:20
+msgid "Set all to present"
 msgstr "Alle auf anwesend setzen"
 
-#: gifts/views/gift.py:97
+#: gifts/templates/gifts/set_present.html:23
+msgid "Set all to absent"
+msgstr "Alle auf abwesend setzen"
+
+#: gifts/templates/gifts/set_present.html:48
+msgid "Nobody is registered for this shift."
+msgstr "Niemand ist für diese Schicht angemeldet."
+
+#: gifts/views/gift.py:98
 #, python-format
 msgid "Gift deleted: %(name)s"
 msgstr "Geschenk gelöscht: %(name)s"
 
-#: gifts/views/present.py:34
-msgid "Attendance was saved"
+#: gifts/views/present.py:35
+msgid "Presence was saved"
 msgstr "Anwesenheit wurde gespeichert"
 
-#: gifts/views/set.py:93
+#: gifts/views/set.py:94
 #, python-format
 msgid "Gift set deleted: %(name)s"
 msgstr "Geschenkset gelöscht: %(name)s"
+
+#~ msgid "Settings"
+#~ msgstr "Einstellungen"
+
+#~ msgid ""
+#~ "Enable automatic availability confirmation at the end of a shift if "
+#~ "absence was not reported"
+#~ msgstr ""
+#~ "Autmatisch als Anwesend markieren, falls nicht manuell als Abwesend "
+#~ "markiert"
+
+#~ msgid "Manage gifts"
+#~ msgstr "Geschenke verwalten"

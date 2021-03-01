@@ -1,5 +1,5 @@
 {% extends "helfertool/base.html" %}
-{% load i18n icons %}
+{% load i18n icons setting %}
 
 {% block content %}
     <div class="row">
@@ -47,9 +47,11 @@
         {% endif %}
     </div>
 
+    {% setting "FEATURES_NEWSLETTER" as features_newsletter %}
+    {% if features_newsletter %}
     <div class="row">
         <div class="col-12">
-            <b>{% trans "Stay informed about future events!" %}</b>
+            <strong>{% trans "Stay informed about future events!" %}</strong>
 
             <br />
 
@@ -59,6 +61,7 @@
             </a>
         </div>
     </div>
+    {% endif %}
 
     {% if involved_events %}
         <div class="row">
@@ -101,6 +104,11 @@
                     </ul>
                 </div>
             {% endfor %}
+        </div>
+    {% endif %}
+    {% if enable_show_more_events %}
+        <div class="mt-3">
+            <a href="{% url 'index_all_events' %}">{% trans "Display all events" %}</a>
         </div>
     {% endif %}
 {% endblock %}

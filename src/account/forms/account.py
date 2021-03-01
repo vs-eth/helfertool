@@ -1,13 +1,14 @@
 from django import forms
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
 from django.utils.translation import ugettext_lazy as _
 
-from ..templatetags.permissions import has_adduser_group, has_addevent_group, has_sendnews_group
+from ..templatetags.globalpermissions import has_adduser_group, has_addevent_group, has_sendnews_group
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.account")
 
 
 logging_group_map = {
@@ -39,18 +40,28 @@ def _change_permission(user, groupname, has_perm, admin_user):
 
 
 def _user_flag_changeable(user, flag):
+    # local account -> yes
     if user.has_usable_password():
         return True
 
-    if hasattr(settings, "AUTH_LDAP_USER_FLAGS_BY_GROUP"):
-        return settings.AUTH_LDAP_USER_FLAGS_BY_GROUP.get(flag, None) is None
+    # LDAP enabled -> check the settings
+    if hasattr(settings, "AUTH_LDAP_USER_FLAGS_BY_GROUP") and \
+            settings.AUTH_LDAP_USER_FLAGS_BY_GROUP.get(flag, None) is not None:
+        return False
+
+    # OpenID connect enabled -> check the settings
+    if settings.OIDC_CUSTOM_PROVIDER_NAME is not None:
+        if flag == "is_active" and settings.OIDC_CUSTOM_CLAIM_LOGIN is not None:
+            return False
+        if flag == "is_superuser" and settings.OIDC_CUSTOM_CLAIM_ADMIN is not None:
+            return False
 
     return True
 
 
 class CreateUserForm(UserCreationForm):
     class Meta:
-        model = User
+        model = get_user_model()
         fields = ("username", "email", "first_name", "last_name", "password1",
                   "password2")
         widgets = {
@@ -68,17 +79,15 @@ class CreateUserForm(UserCreationForm):
     def clean(self):
         # add LOCAL_USER_CHAR to the beginning
         char = settings.LOCAL_USER_CHAR
-        if char:
-            if not self.cleaned_data.get('username').startswith(char):
-                self.cleaned_data['username'] = char + \
-                    self.cleaned_data.get('username')
+        if char and not self.cleaned_data.get('username').startswith(char):
+            self.cleaned_data['username'] = char + self.cleaned_data.get('username')
 
         return super(CreateUserForm, self).clean()
 
 
 class EditUserForm(forms.ModelForm):
     class Meta:
-        model = User
+        model = get_user_model()
         fields = ("first_name", "last_name", "email", "is_active", "is_superuser")
 
     def __init__(self, *args, **kwargs):
@@ -95,7 +104,7 @@ class EditUserForm(forms.ModelForm):
         if _user_flag_changeable(self.instance, "is_active"):
             self.fields["is_active"].help_text = ""
         else:
-            self.fields["is_active"].help_text = _("Managed by LDAP group")
+            self.fields["is_active"].help_text = _("Managed by external identity provider")
             self.fields["is_active"].disabled = True
 
         self._superuser_initial = self.instance.is_superuser
@@ -103,7 +112,7 @@ class EditUserForm(forms.ModelForm):
         if _user_flag_changeable(self.instance, "is_superuser"):
             self.fields["is_superuser"].help_text = ""
         else:
-            self.fields["is_superuser"].help_text = _("Managed by LDAP group")
+            self.fields["is_superuser"].help_text = _("Managed by external identity provider")
             self.fields["is_superuser"].disabled = True
 
         # permission: adduser
@@ -123,12 +132,13 @@ class EditUserForm(forms.ModelForm):
         )
 
         # permission: sendnews
-        self._sendnews_initial = has_sendnews_group(self.instance)
-        self.fields["perm_sendnews"] = forms.BooleanField(
-            label=_("Send newsletter"),
-            required=False,
-            initial=self._sendnews_initial,
-        )
+        if settings.FEATURES_NEWSLETTER:
+            self._sendnews_initial = has_sendnews_group(self.instance)
+            self.fields["perm_sendnews"] = forms.BooleanField(
+                label=_("Send newsletter"),
+                required=False,
+                initial=self._sendnews_initial,
+            )
 
     def save(self, commit=True):
         instance = super(EditUserForm, self).save(commit)
@@ -163,7 +173,8 @@ class EditUserForm(forms.ModelForm):
         if self.cleaned_data.get("is_superuser"):
             self.cleaned_data["perm_adduser"] = False
             self.cleaned_data["perm_addevent"] = False
-            self.cleaned_data["perm_sendnews"] = False
+            if settings.FEATURES_NEWSLETTER:
+                self.cleaned_data["perm_sendnews"] = False
 
         # change permissions
         if self.cleaned_data.get("perm_adduser") != self._adduser_initial:
@@ -176,7 +187,7 @@ class EditUserForm(forms.ModelForm):
                                self.cleaned_data.get("perm_addevent"),
                                self._admin_user)
 
-        if self.cleaned_data.get("perm_sendnews") != self._sendnews_initial:
+        if settings.FEATURES_NEWSLETTER and self.cleaned_data.get("perm_sendnews") != self._sendnews_initial:
             _change_permission(self.instance, settings.GROUP_SENDNEWS,
                                self.cleaned_data.get("perm_sendnews"),
                                self._admin_user)

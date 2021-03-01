@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
@@ -9,6 +9,7 @@ from collections import OrderedDict
 from copy import deepcopy
 
 from badges.models import BadgeDefaults
+from prerequisites.models import Prerequisite
 
 
 class Job(models.Model):
@@ -23,6 +24,7 @@ class Job(models.Model):
         :job_admins: users, that can see and edit the helpers
         :public: job is visible publicly
         :badge_design: badge design for this job
+        :prerequisites: Prerequisites for this job
     """
     class Meta:
         ordering = ['-order', 'pk']
@@ -53,7 +55,7 @@ class Job(models.Model):
     )
 
     job_admins = models.ManyToManyField(
-        User,
+        get_user_model(),
         blank=True,
         verbose_name=_("Admins for this job"),
     )
@@ -80,6 +82,12 @@ class Job(models.Model):
         verbose_name=_("Order, highest number on top"),
     )
 
+    prerequisites = models.ManyToManyField(
+        Prerequisite,
+        blank=True,
+        verbose_name=_("Prerequisites for this job"),
+    )
+
     def __str__(self):
         return "%s" % self.name
 
@@ -89,19 +97,6 @@ class Job(models.Model):
             return self.archived_number_coordinators
         else:
             return self.coordinators.count()
-
-    def is_admin(self, user):
-        """ Check, if a user is admin of this job and returns a boolean.
-
-        Superusers and admins of the event are also admins of a shift.
-
-        :param user: the user
-        :type user: :class:`django.contrib.auth.models.User`
-
-        :returns: True or False
-        """
-        return self.event.is_admin(user) or \
-            self.job_admins.filter(pk=user.pk).exists()
 
     def helpers_and_coordinators(self):
         helpers = Helper.objects.filter(shifts__job=self).distinct()
@@ -152,7 +147,7 @@ class Job(models.Model):
 
         return ordered_shifts
 
-    def duplicate(self, new_event, gift_set_mapping):
+    def duplicate(self, new_event, gift_set_mapping, prerequisite_mapping):
         new_job = deepcopy(self)
 
         new_job.pk = None
@@ -164,10 +159,15 @@ class Job(models.Model):
             new_job.badge_defaults = self.badge_defaults.duplicate()
 
         new_job.save()
+        # get the new prerequisites
+        for prerequisite in self.prerequisites.all():
+            new_job.prerequisites.add(prerequisite_mapping[prerequisite])
 
+        # clear admins and coordinators
         new_job.job_admins.clear()
         new_job.coordinators.clear()
 
+        # copy the shifts
         for shift in self.shift_set.all():
             shift.duplicate(new_job=new_job, gift_set_mapping=gift_set_mapping)
 

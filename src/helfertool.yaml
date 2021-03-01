@@ -1,4 +1,4 @@
-# Show this announcement on every page (for example for maintenance) 
+# Show this announcement on every page (for example for maintenance)
 #announcement: ""
 
 # Location of uploaded files, static files and temporary files.
@@ -142,6 +142,9 @@ authentication:
     #        # Endpoint URLs
     #        authorization_endpoint: "http://localhost:8080/auth/realms/test/protocol/openid-connect/auth"
     #        token_endpoint: "http://localhost:8080/auth/realms/test/protocol/openid-connect/token"
+    #
+    #        # Optional: If present, the endpoint is must return all relevant info for authentication and authorization.
+    #        #           If omitted, information is expected to be contained in the id_token
     #        user_endpoint: "http://localhost:8080/auth/realms/test/protocol/openid-connect/userinfo"
     #
     #        # URI to get JWKS
@@ -156,20 +159,21 @@ authentication:
     #        # There are two types to handle claims
     #        # 1) direct: the claim is directly compared
     #        # 2) member: the claim is a list and it is checked if the specified value is included (useful for groups/roles)
+    #        # The path is a JMESPath. Plain claim names like "roles" are also a valid JMESPath.
     #        login:
     #            #compare: "direct"
-    #            #name: "helfertool_login"
+    #            #path: "helfertool_login"
     #            #value: true
     #            compare: "member"
-    #            name: "roles"
+    #            path: "roles"
     #            value: "helfertool_login"
     #
     #        admin:
     #            #compare: "direct"
-    #            #name: "helfertool_admin"
+    #            #path: "helfertool_admin"
     #            #value: true
     #            compare: "member"
-    #            name: "roles"
+    #            path: "roles"
     #            value: "helfertool_admin"
 
     # Prepend character to all locally created users
@@ -189,12 +193,18 @@ logging:
     #    # Log level that will be sent to syslog: INFO, WARNING, ERROR
     #    level: 'INFO'
     #
-    #    # Server and port
+    #    # Server, port and protocol
+    #    # UDP is recommended. With TCP, the syslog server needs to run and accept connections when the Helfertool is started.
     #    server: 'localhost'
     #    port: 514
+    #    protocol: 'udp'
     #
     #    # Syslog facility to use
     #    facility: 'local7'
+
+    # Store all event-related events in the database.
+    # The log entries are only stored as long as the event exists and are deleted with the event.
+    #database: true
 
 # Security settings
 security:
@@ -224,8 +234,40 @@ security:
     # Minimal password length (for local accounts)
     password_length: 12
 
+# Helfertool features can be disabled globally here (true means enabled, false means disabled).
+# If a flag is changed to disabled, all events are modified automatically after a reload (of celery).
+# Enabling a feature does not change event settings.
+features:
+    # Collect mail addresses for newsletter.
+    # This also disables the unsubscribe link. If the feature was used previously and is now disabled,
+    # you should take care of the stored data (greetings from GDPR)
+    newsletter: true
+
+    # Further features
+    badges: true
+    gifts: true
+    prerequisites: true
+    inventory: true
+
 # Custom URLs, mail addresses, ...
 customization:
+    # Modify certain properties for the general helfertool to display
+    display:
+        # Maximum years of events to be displayed by default on the main page
+        events_last_years: 2
+
+    # Fuzzy search for helper names
+    # Only available on PostgrSQL with pg_trgm extension, disabled automatically otherwise
+    search:
+        # Values between 0.2 (show more results) and 0.5 (show less results) seem to be reasonable.
+        # The similarity threshold of 0.3 was selected based on a name database of ~4000 western
+        # european names and the gut feel when a good match was actually found.
+        similarity: 0.3
+
+        # If PostgreSQL is used and pg_trgm is installed, the similarity search is automatically used.
+        # If you do not want to have this, disable it here.
+        disable_similarity: false
+
     # There are some external links that should/can be changed
     urls:
         # Imprint with contact details
@@ -251,6 +293,9 @@ badges:
 
     # Maximum photo size in kb
     photo_max_size: 1000
+
+    # Maximum number of copies for special badges
+    special_badges_max: 50
 
     # Time until PDF file is deleted after it was created in minutes
     pdf_timeout: 30

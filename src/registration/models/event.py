@@ -1,9 +1,9 @@
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
-from django.db.models.signals import post_save
+from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 from django.utils.translation import ugettext_lazy as _
 from django_bleach.models import BleachField
@@ -13,6 +13,7 @@ import datetime
 
 from badges.models import BadgeSettings, BadgeDefaults, Badge
 from gifts.models import HelpersGifts
+from gifts.models.giftsettings import GiftSettings
 from inventory.models import InventorySettings
 
 
@@ -166,8 +167,9 @@ class Event(models.Model):
     )
 
     admins = models.ManyToManyField(
-        User,
+        get_user_model(),
         blank=True,
+        through='registration.EventAdminRoles'
     )
 
     active = models.BooleanField(
@@ -234,6 +236,11 @@ class Event(models.Model):
         verbose_name=_("Use the inventory functionality"),
     )
 
+    prerequisites = models.BooleanField(
+        default=False,
+        verbose_name=_("Manage prerequisites for helpers"),
+    )
+
     archived = models.BooleanField(
         default=False,
         verbose_name=_("Event is archived"),
@@ -258,9 +265,8 @@ class Event(models.Model):
 
             new_choices = self.get_shirt_choices()
             for choice in Event.SHIRT_CHOICES:
-                if choice not in new_choices:
-                    if self.helper_set.filter(shirt=choice[0]).exists():
-                        not_removable.append(choice[1])
+                if choice not in new_choices and self.helper_set.filter(shirt=choice[0]).exists():
+                    not_removable.append(choice[1])
 
             if not_removable:
                 sizes = ', '.join(map(str, not_removable))
@@ -268,34 +274,6 @@ class Event(models.Model):
                                        _("The following sizes are used and "
                                          "therefore cannot be removed: {}".
                                          format(sizes))})
-
-    def is_admin(self, user):
-        """ Check, if a user is admin of this event and returns a boolean.
-
-        A superuser is also admin of an event.
-
-        :param user: the user
-        :type user: :class:`django.contrib.auth.models.User`
-
-        :returns: True or False
-        """
-        return user.is_superuser or self.admins.filter(pk=user.pk).exists()
-
-    def is_involved(self, user):
-        """ Check if is_admin is fulfilled or the user is admin of a job.
-
-        :param user: the user
-        :type user: :class:`django.contrib.auth.models.User`
-        """
-        if self.is_admin(user):
-            return True
-
-        # iterate over all jobs
-        for job in self.job_set.all():
-            if job.job_admins.filter(pk=user.pk).exists():
-                return True
-
-        return False
 
     def get_shirt_choices(self, internal=True):
         choices = []
@@ -326,6 +304,13 @@ class Event(models.Model):
             return None
 
     @property
+    def gift_settings(self):
+        try:
+            return self.giftsettings
+        except AttributeError:
+            return None
+
+    @property
     def all_coordinators(self):
         return self.helper_set.filter(job__isnull=False)
 
@@ -334,25 +319,53 @@ class Event(models.Model):
         return self.changes_until is not None and \
             datetime.date.today() <= self.changes_until
 
+    def _setup_flags(self):
+        """
+        Set flags like `ask_news` depending on global settings. If a feature is disabled globally,
+        this methods takes care that it is disabled for the event.
 
-@receiver(post_save, sender=Event, dispatch_uid='event_saved')
-def event_saved(sender, instance, using, **kwargs):
-    """ Add badge settings, badges and gifts if necessary.
+        Returns True if a value changed, otherwise False.
 
-    This is a signal handler, that is called, when a event is saved. It
-    adds the badge settings if badge creation is enabled and it is not
-    there already. It also adds badge defaults to all jobs and badges to all
-    helpers and coordinators if necessary.
-    """
-    if instance.badges:
+        Background info:
+        This method is called from the pre_save handler and on startup in a Celery task.
+
+        We want to prevent duplicated checks like "is the feature enabled for the event
+        and also enabled globally?" all the time. So the event flags are used and set to `False` is a
+        feature is disabled globally.
+        """
+        changed = False
+
+        flags = [
+            ["FEATURES_NEWSLETTER", "ask_news"],
+            ["FEATURES_BADGES", "badges"],
+            ["FEATURES_GIFTS", "gifts"],
+            ["FEATURES_PREREQUISITES", "prerequisites"],
+            ["FEATURES_INVENTORY", "inventory"],
+        ]
+
+        for flag in flags:
+            # settings.FEATURE_... is False and self.... is True -> change
+            if not getattr(settings, flag[0]) and getattr(self, flag[1]):
+                setattr(self, flag[1], False)
+                changed = True
+
+        return changed
+
+    def _setup_badge_settings(self):
+        """
+        Set up badges for all jobs and helpers (called from post_save handler).
+
+        It adds the badge settings if badge creation is enabled and it is not there already.
+        It also adds badge defaults to all jobs and badges to all helpers and coordinators if necessary.
+        """
         # badge settings for event
-        if not instance.badge_settings:
+        if not self.badge_settings:
             settings = BadgeSettings()
-            settings.event = instance
+            settings.event = self
             settings.save()
 
         # badge defaults for jobs
-        for job in instance.job_set.all():
+        for job in self.job_set.all():
             if not job.badge_defaults:
                 defaults = BadgeDefaults()
                 defaults.save()
@@ -361,19 +374,48 @@ def event_saved(sender, instance, using, **kwargs):
                 job.save()
 
         # badge for helpers
-        for helper in instance.helper_set.all():
+        for helper in self.helper_set.all():
             if not hasattr(helper, 'badge'):
                 badge = Badge()
+                badge.event = self
                 badge.helper = helper
                 badge.save()
 
-    if instance.gifts:
-        for helper in instance.helper_set.all():
+    def _setup_gift_settings(self):
+        """
+        Setup gift relations for all helpers (called from post_save handler).
+        """
+        if not self.gift_settings:
+            GiftSettings.objects.create(event=self)
+
+        for helper in self.helper_set.all():
             if not hasattr(helper, 'gifts'):
                 gifts = HelpersGifts()
                 gifts.helper = helper
                 gifts.save()
 
+    def _setup_inventory_settings(self):
+        """
+        Setup inventory settings for the event (called from post_save handler).
+        """
+        if not self.inventory_settings:
+            InventorySettings.objects.create(event=self)
+
+
+@receiver(pre_save, sender=Event, dispatch_uid='pre_event_saved')
+def pre_event_saved(sender, instance, using, **kwargs):
+    """ Set flags like `ask_news` depending on global settings BEFORE event is saved. """
+    instance._setup_flags()
+
+
+@receiver(post_save, sender=Event, dispatch_uid='event_saved')
+def event_saved(sender, instance, using, **kwargs):
+    """ Add badge settings, badges and gifts if necessary AFTER event is saved. """
+    if instance.badges:
+        instance._setup_badge_settings()
+
+    if instance.gifts:
+        instance._setup_gift_settings()
+
     if instance.inventory:
-        if not instance.inventory_settings:
-            InventorySettings.objects.create(event=instance)
+        instance._setup_inventory_settings()

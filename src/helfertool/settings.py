@@ -3,6 +3,7 @@ Django settings for Helfertool.
 """
 
 import os
+import socket
 import sys
 import yaml
 
@@ -10,7 +11,7 @@ from django.utils.translation import ugettext_lazy as _
 
 from datetime import timedelta
 
-from .utils import dict_get, build_path, get_version
+from .utils import dict_get, build_path, get_version, pg_trgm_installed
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,10 +38,10 @@ except yaml.parser.ParserError as e:
 is_docker = dict_get(config, False, 'docker')
 
 # versioning
-HELFERTOOL_VERSION=get_version(os.path.join(BASE_DIR, 'version.txt'))
-HELFERTOOL_CONTAINER_VERSION=None
+HELFERTOOL_VERSION = get_version(os.path.join(BASE_DIR, 'version.txt'))
+HELFERTOOL_CONTAINER_VERSION = None
 if is_docker:
-    HELFERTOOL_CONTAINER_VERSION=get_version('/helfertool/container_version')
+    HELFERTOOL_CONTAINER_VERSION = get_version('/helfertool/container_version')
 
 # directories for static and media files
 if is_docker:
@@ -112,13 +113,16 @@ CELERY_BROKER_POOL_LIMIT = None
 
 # caches
 CACHES = {
+    # default cache - not used on purpose currently
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     },
+    # select2 needs its own cache
     'select2': {
         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
         'LOCATION': 'select2_cache',
     },
+    # cache for locks (used by celery tasks to prevent parallel execution)
     'locks': {
         'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
         'LOCATION': 'locks_cache',
@@ -313,19 +317,25 @@ DEBUG = dict_get(config, False, 'security', 'debug')
 SECRET_KEY = dict_get(config, 'CHANGEME', 'security', 'secret')
 ALLOWED_HOSTS = dict_get(config, [], 'security', 'allowed_hosts')
 
-# use X-Forwarded-* headers
+# use X-Forwarded-Proto header to determine if https is used
 if dict_get(config, False, 'security', 'behind_proxy') or is_docker:
-    USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# cookie security
+# cookies
+LANGUAGE_COOKIE_NAME = "lang"
+
 if not DEBUG:
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = "Strict"
+
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_SAMESITE = "Strict"
+
+    LANGUAGE_COOKIE_HTTPONLY = True
+    LANGUAGE_COOKIE_SECURE = True
+    LANGUAGE_COOKIE_SAMESITE = "Strict"
 
 # logging
 ADMINS = [(mail, mail) for mail in dict_get(config, [], 'logging', 'mails')]
@@ -339,23 +349,33 @@ LOGGING = {
         },
     },
     'formatters': {
+        # formatters for console and syslog. database logging does not use a formatter
         'helfertool_console': {
-            '()': 'helfertool.log.HelfertoolFormatter',
+            '()': 'toollog.formatters.TextFormatter',
             'format': '[%(asctime)s] %(levelname)s %(message)s (%(extras)s)',
             'datefmt': '%d/%b/%Y %H:%M:%S'
         },
         'helfertool_syslog': {
-            '()': 'helfertool.log.HelfertoolFormatter',
-            'format': '%(name)s %(levelname)s %(message)s (%(extras)s)',
+            '()': 'toollog.formatters.TextFormatter',
+            'format': 'helfertool %(levelname)s %(message)s (%(extras)s)',
         },
     },
     'handlers': {
+        # console output in debug mode (-> development)
         'helfertool_console': {
             'class': 'logging.StreamHandler',
             'filters': ['require_debug_true'],
             'formatter': 'helfertool_console',
             'level': 'INFO',
         },
+
+        # store in database (only event-related entries)
+        'helfertool_database': {
+            'class': 'toollog.handlers.DatabaseHandler',
+            'level': 'INFO',
+        }
+
+        # syslog handlers are added dynamically below
     },
     'loggers': {
         'helfertool': {
@@ -365,19 +385,32 @@ LOGGING = {
     },
 }
 
+# enable database logging
+DATABASE_LOGGING = dict_get(config, True, 'logging', 'database')
+if DATABASE_LOGGING:
+    LOGGING['loggers']['helfertool']['handlers'].append('helfertool_database')
+
+# enable syslog if configured
 syslog_config = dict_get(config, None, 'logging', 'syslog')
 if syslog_config:
+    protocol = dict_get(syslog_config, 'udp', 'protocol')
+    if protocol not in ['tcp', 'udp']:
+        print('Invalid syslog port: "tcp" or "udp" expected')
+        sys.exit(1)
+
     LOGGING['handlers']['helfertool_syslog'] = {
         'class': 'logging.handlers.SysLogHandler',
         'formatter': 'helfertool_syslog',
-        'level': dict_get(syslog_config, 'INFO', 'level'),
+        'level': 'INFO',
         'facility': dict_get(syslog_config, 'local7', 'facility'),
         'address': (dict_get(syslog_config, 'localhost', 'server'),
                     dict_get(syslog_config, 514, 'port')),
+        'socktype': socket.SOCK_DGRAM if protocol == 'udp' else socket.SOCK_STREAM,
     }
 
     LOGGING['loggers']['helfertool']['handlers'].append('helfertool_syslog')
 
+# additional syslog output if we run in docker (-> rsyslog -> files)
 if is_docker:
     LOGGING['handlers']['helfertool_syslog_docker'] = {
         'class': 'logging.handlers.SysLogHandler',
@@ -388,6 +421,20 @@ if is_docker:
     }
 
     LOGGING['loggers']['helfertool']['handlers'].append('helfertool_syslog_docker')
+
+# Helfertool features
+FEATURES_NEWSLETTER = bool(dict_get(config, True, 'features', 'newsletter'))
+FEATURES_BADGES = bool(dict_get(config, True, 'features', 'badges'))
+FEATURES_GIFTS = bool(dict_get(config, True, 'features', 'gifts'))
+FEATURES_PREREQUISITES = bool(dict_get(config, True, 'features', 'prerequisites'))
+FEATURES_INVENTORY = bool(dict_get(config, True, 'features', 'inventory'))
+
+# Display Options
+# Maximum years of events to be displayed by default on the main page
+EVENTS_LAST_YEARS = int(dict_get(config, 2, 'customization', 'display', 'events_last_years'))
+if EVENTS_LAST_YEARS < 0:
+    print("events_show_years must be positive or 0")
+    sys.exit(1)
 
 # announcement on every page
 ANNOUNCEMENT_TEXT = dict_get(config, None, 'announcement')
@@ -405,9 +452,22 @@ WEBSITE_URL = 'https://www.helfertool.org'
 CONTACT_MAIL = dict_get(config, 'helfertool@localhost', 'customization',
                         'contact_address')
 
+# similarity search for postgresql
+SEARCH_SIMILARITY = dict_get(config, 0.3, 'customization', 'search', 'similarity')
+SEARCH_SIMILARITY_DISABLED = dict_get(config, False, 'customization', 'search', 'disable_similarity')
+
+if SEARCH_SIMILARITY_DISABLED is False:
+    # it only works on postgresql when pg_trgm is there, so check this. otherwise, disable
+    if 'postgresql' in DATABASES['default']['ENGINE']:
+        if not pg_trgm_installed():
+            SEARCH_SIMILARITY_DISABLED = True
+    else:
+        SEARCH_SIMILARITY_DISABLED = True
+
 # badges
 BADGE_PDFLATEX = dict_get(config, '/usr/bin/pdflatex', 'badges', 'pdflatex')
 BADGE_PHOTO_MAX_SIZE = dict_get(config, 1000, 'badges', 'photo_max_size')
+BADGE_SPECIAL_MAX = dict_get(config, 50, 'badges', 'special_badges_max')
 
 BADGE_PDF_TIMEOUT = 60 * dict_get(config, 30, 'badges', 'pdf_timeout')
 BADGE_RM_DELAY = 60 * dict_get(config, 2, 'badges', 'rm_delay')
@@ -466,6 +526,7 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'django.contrib.postgres',
     'django.contrib.staticfiles',
     'mozilla_django_oidc',
     'axes',
@@ -483,6 +544,8 @@ INSTALLED_APPS = (
     'help.apps.HelpConfig',
     'account.apps.AccountConfig',
     'toolsettings.apps.ToolsettingsConfig',
+    'prerequisites.apps.PrerequisitesConfig',
+    'toollog.apps.ToollogConfig',
     'helfertool',
 )
 

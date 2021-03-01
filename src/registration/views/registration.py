@@ -1,3 +1,6 @@
+import datetime
+
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.urls import reverse
@@ -9,14 +12,20 @@ from .utils import nopermission, get_or_404
 
 from ..forms import RegisterForm, DeregisterForm, HelperForm
 from ..models import Event, Link
+from ..permissions import has_access, ACCESS_INVOLVED
+
 
 from news.helper import news_test_email
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.registration")
 
 
-def index(request):
+def index_all_events(request):
+    return index(request, False)
+
+
+def index(request, filter_old_events=True):
     events = Event.objects.all()
 
     # public events
@@ -25,19 +34,37 @@ def index(request):
 
     # inactive events that are visible for current user
     involved_events = []
+    enable_show_more_events = False
     if not request.user.is_anonymous:
-        for e in events:
-            e.involved = e.is_involved(request.user)
+        # first get all involved events
+        all_involved_events = []
+        for event in events:
+            event.involved = has_access(request.user, event, ACCESS_INVOLVED)
 
-            if e.involved and not e.active:
-                involved_events.append(e)
+            if event.involved and not event.active:
+                all_involved_events.append(event)
+
+        # and then optionally cut away the old ones
+        if filter_old_events:
+            oldest_year = datetime.datetime.now().year - settings.EVENTS_LAST_YEARS
+            for event in all_involved_events:
+                if event.date.year >= oldest_year:
+                    involved_events.append(event)
+                else:
+                    # we skip an event, so we need a button to show it
+                    enable_show_more_events = True
+        else:
+            involved_events = all_involved_events
 
     # only one public event and no internal events -> redirect
     if events.count() == 1 and active_events:
         return redirect(form, event_url_name=active_events[0].url_name)
 
-    context = {'active_events': active_events,
-               'involved_events': involved_events}
+    context = {
+        'active_events': active_events,
+        'involved_events': involved_events,
+        'enable_show_more_events': enable_show_more_events,
+    }
     return render(request, 'registration/index.html', context)
 
 
@@ -61,6 +88,7 @@ def form(request, event_url_name, link_pk=None):
             raise Http404()
 
     # check permission
+    user_is_involved = has_access(request.user, event, ACCESS_INVOLVED)
     if not event.active and not link:
         # not logged in -> show message
         if not request.user.is_authenticated:
@@ -68,7 +96,7 @@ def form(request, event_url_name, link_pk=None):
             context = {'event': event}
             return render(request, 'registration/not_active.html', context)
         # logged in -> check permission
-        elif not event.is_involved(request.user):
+        elif not user_is_involved:
             return nopermission(request)
 
     # handle form
@@ -90,7 +118,8 @@ def form(request, event_url_name, link_pk=None):
         return HttpResponseRedirect(reverse('registered', args=[event.url_name, helper.pk]))
 
     context = {'event': event,
-               'form': form}
+               'form': form,
+               'user_is_involved': user_is_involved}
     return render(request, 'registration/form.html', context)
 
 
@@ -149,7 +178,6 @@ def deregister(request, event_url_name, helper_id, shift_pk):
         logger.info("helper deregistered", extra={
             'event': event,
             'helper': helper,
-            "helper_pk": helper_id,
         })
 
         if not helper.pk:
@@ -190,7 +218,6 @@ def update_personal(request, event_url_name, helper_id):
         logger.info("helper dataupdated", extra={
             'event': event,
             'helper': helper,
-            "helper_pk": helper_id,
         })
 
         if form.email_has_changed:

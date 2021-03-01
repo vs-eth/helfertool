@@ -1,0 +1,86 @@
+{% extends "helfertool/admin.html" %}
+{% load i18n bootstrap4 translation %}
+
+{% block admincontent %}
+    <h2>{% trans "Permissions" %}</h2>
+
+    <div class="alert alert-info">
+        <h4 class="alert-heading">{% trans "Role descriptions" %}
+            <a class="btn btn-sm btn-outline-primary ml-2 align-top" data-toggle="collapse" href="#roles-collapse" role="button" aria-expanded="false" aria-controls="roles-collapse">
+                {% trans "Show" %}
+            </a>
+        </h4>
+
+        <div id="roles-collapse" class="collapse" id="event-admin-description">
+            <h5 class="alert-heading">{% trans "For the whole event" %}</h4>
+
+            <p><strong>{% trans "Administrator" %}</strong><br />
+            {% trans "Can do everything with the event, including deletion and permissions changes." %}</p>
+
+            <p><strong>{% trans "Restricted administrator" %}</strong><br />
+            {% trans "Can manage helpers and all related features, but not change the event settings. The user can not:" %}</p>
+            <ul>
+                <li>{% trans "Edit or delete the event itself" %}</li>
+                <li>{% trans "Create or change links" %}</li>
+                <li>{% trans "Change jobs or shifts" %}</li>
+                <li>{% trans "Change inventory, badges, gifts or prerequisite settings" %}</li>
+                <li>{% trans "View the audit log" %}</li>
+            </ul>
+
+            <p><strong>{% trans "Front desk" %}</strong><br />
+            {% blocktrans trimmed %}
+            Can read all helper data, resend the confirmation mail, edit the internal comment and change the delivered
+            gifts of the helpers. The user cannot change the presence or any other data.
+            {% endblocktrans %}
+            </p>
+
+            <p><strong>{% trans "Inventory" %}</strong><br />
+            {% trans "Can read all helper data and register or take back inventory items." %}</p>
+
+            <p><strong>{% trans "Badges" %}</strong><br />
+            {% trans "Can print and register badges." %}</p>
+
+            <hr>
+
+            <h5 class="alert-heading">{% trans "For single jobs" %}</h4>
+
+            <p>
+                {% url 'jobs_and_shifts' event.url_name as a_job_settings %}
+                {% blocktrans trimmed %}
+                    Permissions for single jobs are managed in the <a href="{{ a_job_settings }}">job settings</a>.
+                {% endblocktrans %}
+            </p>
+
+            <hr>
+
+            <p><strong>{% trans "To remove a user, deselect all roles and click Save." %}</strong></p>
+        </div>
+    </div>
+
+    <form action="" method="post">
+        {% csrf_token %}
+
+        <table class="table" aria-describedby="event-admin-description">
+            <thead>
+                <tr>
+                    <th scope="col" class="col-md-6">{% trans "User" %}</th>
+                    <th scope="col" class="col-md-4">{% trans "Roles" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for form in forms %}
+                <tr>
+                    <td>{{ form.instance.user.get_full_name }} ({{ form.instance.user.username }})</td>
+                    <td>{% bootstrap_field form.roles show_label=false %}</td>
+            {% endfor %}
+
+            <tr>
+                <td>{% bootstrap_field add_form.user show_label=false %}</td>
+                <td>{% bootstrap_field add_form.roles show_label=false %}</td>
+            </tr>
+            </tbody>
+        </table>
+
+        <input type="submit" value="{% trans "Save" %}" class="btn btn-outline-primary" />
+    </form>
+{% endblock %}

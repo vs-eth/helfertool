@@ -10,16 +10,18 @@ from django.utils.translation import ugettext_lazy as _
 from smtplib import SMTPException
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.registration")
 
 import uuid
 
 from badges.models import Badge
 from gifts.models import HelpersGifts
 from mail.tracking import new_tracking_registration
+from prerequisites.models import Prerequisite
 
 from .event import Event
 from .job import Job
+from .helpershift import HelperShift
 
 
 class Helper(models.Model):
@@ -32,6 +34,7 @@ class Helper(models.Model):
         :email: the e-mail address
         :phone: phone number
         :comment: optional comment
+        :internal_comment: optional internal comment
         :shirt: t-shirt size (possible sizes are defined here)
         :vegetarian: is the helper vegetarian?
         :infection_instruction: status of the instruction for food handling
@@ -40,6 +43,7 @@ class Helper(models.Model):
         :mail_failed: a "undelivered" report returned for the registration mail
         :privacy_statement: the privacy statement was accepted
     """
+
     class Meta:
         ordering = ['event', 'surname', 'firstname']
 
@@ -68,10 +72,11 @@ class Helper(models.Model):
 
     shifts = models.ManyToManyField(
         'Shift',
+        through=HelperShift,
     )
 
     event = models.ForeignKey(
-        'Event',
+        Event,
         on_delete=models.CASCADE,
     )
 
@@ -100,6 +105,11 @@ class Helper(models.Model):
         verbose_name=_("Comment"),
     )
 
+    internal_comment = models.TextField(
+        blank=True,
+        verbose_name=_("Internal comment"),
+    )
+
     shirt = models.CharField(
         max_length=20,
         choices=Event.SHIRT_CHOICES,
@@ -122,6 +132,7 @@ class Helper(models.Model):
 
     timestamp = models.DateTimeField(
         auto_now_add=True,
+        verbose_name=_("Registration time for the helper")
     )
 
     validated = models.BooleanField(
@@ -139,6 +150,12 @@ class Helper(models.Model):
     privacy_statement = models.BooleanField(
         default=False,
         verbose_name=_("I agree with the data privacy statement."),
+    )
+
+    prerequisites = models.ManyToManyField(
+        Prerequisite,
+        through='prerequisites.FulfilledPrerequisite',
+        blank=True,
     )
 
     def __str__(self):
@@ -163,19 +180,6 @@ class Helper(models.Model):
         # check coordinated jobs
         for job in self.coordinated_jobs:
             if job.infection_instruction:
-                return True
-
-        return False
-
-    def can_edit(self, user):
-        # for helpers
-        for shift in self.shifts.all():
-            if shift.job.is_admin(user):
-                return True
-
-        # for coordinators
-        for job in self.job_set.all():
-            if job.is_admin(user):
                 return True
 
         return False
@@ -239,6 +243,12 @@ class Helper(models.Model):
         if self.shifts.count() == 0 and not self.is_coordinator:
             self.delete()
 
+    def has_missed_shift(self, shift=None):
+        if shift is None:
+            return self.helpershift_set.filter(present=False, manual_presence=True).exists()
+        else:
+            return self.helpershift_set.filter(present=False, manual_presence=True, shift=shift).exists()
+
     @property
     def full_name(self):
         """ Returns full name of helper """
@@ -281,6 +291,7 @@ def helper_saved(sender, instance, using, **kwargs):
     if instance.event:
         if instance.event.badges and not hasattr(instance, 'badge'):
             badge = Badge()
+            badge.event = instance.event
             badge.helper = instance
             badge.save()
 

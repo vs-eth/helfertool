@@ -58,24 +58,22 @@ def check(request):
             ldap_conn = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
             ldap_conn.simple_bind_s(settings.AUTH_LDAP_BIND_DN,
                                     settings.AUTH_LDAP_BIND_PASSWORD)
-        except ldap.LDAPError:  # noqa: E1101
+        except ldap.LDAPError:  # pylint: disable=E1101
             ldap_ok = False
     else:
         ldap_configured = False
         ldap_ok = False
 
     # headers
-    for header, value in request.META.items():
-        if header.startswith('HTTP_'):
-            print(header + " " + value)
     header_host = request.META.get('HTTP_HOST')
-    header_x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    header_remote_addr = request.META.get('REMOTE_ADDR')
     header_x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     header_x_forwarded_proto = request.META.get('HTTP_X_FORWARDED_PROTO')
 
     context = {
         'version': settings.HELFERTOOL_VERSION,
         'container_version': settings.HELFERTOOL_CONTAINER_VERSION,
+        'similarity_search': not settings.SEARCH_SIMILARITY_DISABLED,
 
         'templates_ok': templates_ok,
         'mail_ok': mail_ok,
@@ -84,7 +82,7 @@ def check(request):
         'ldap_ok': ldap_ok,
 
         'header_host': header_host,
-        'header_x_real_ip': header_x_real_ip,
+        'header_remote_addr': header_remote_addr,
         'header_x_forwarded_for': header_x_forwarded_for,
         'header_x_forwarded_proto': header_x_forwarded_proto,
     }

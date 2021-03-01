@@ -1,17 +1,19 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.news")
 
 from ..models import Person
 from ..forms import UnsubscribeForm
 
 
 def unsubscribe(request, token):
-    if not token:
+    # check if feature is available and token is there
+    if not settings.FEATURES_NEWSLETTER or not token:
         raise Http404()
 
     try:

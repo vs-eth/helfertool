@@ -16,10 +16,9 @@ class MailForwarder:
     def __init__(self):
         self._connection = None
 
-        self._own_addresses = [
-            settings.EMAIL_SENDER_ADDRESS.lower(),
-            settings.FORWARD_UNHANDLED_ADDRESS.lower(),
-        ]
+        self._own_addresses = [settings.EMAIL_SENDER_ADDRESS.lower(), ]
+        if settings.FORWARD_UNHANDLED_ADDRESS:
+            self._own_addresses.append(settings.FORWARD_UNHANDLED_ADDRESS.lower())
 
     def connect(self):
         """
@@ -154,7 +153,7 @@ class MailForwarder:
             valid_addresses.append(addr)
 
         return valid_addresses
-    
+
     def _merge_addr(self, addresses, new_name, new_mail):
         # new name and mail None -> abort
         if not new_name and not new_mail:
@@ -163,18 +162,18 @@ class MailForwarder:
         # new name None -> use mail
         if not new_name:
             new_name = new_mail
-        
+
         # already in there -> abort
         for _, mail in addresses:
             if mail.lower() == new_mail.lower():
                 return
-        
+
         # add
         addresses.append((new_name, new_mail))
-    
+
     def _merge_addr_list(self, addresses, new_addresses):
         for new_name, new_mail in new_addresses:
             self._merge_addr(addresses, new_name, new_mail)
-    
+
     def _format_addr_header(self, addresses):
         return ", ".join([email.utils.formataddr(addr) for addr in addresses])

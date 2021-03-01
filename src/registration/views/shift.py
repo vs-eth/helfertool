@@ -9,9 +9,10 @@ from .utils import nopermission, get_or_404
 
 from ..decorators import archived_not_available
 from ..forms import ShiftForm, ShiftDeleteForm
+from ..permissions import has_access, ACCESS_JOB_EDIT
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.registration")
 
 
 @login_required
@@ -20,7 +21,7 @@ def edit_shift(request, event_url_name, job_pk, shift_pk=None):
     event, job, shift, helper = get_or_404(event_url_name, job_pk, shift_pk)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, job, ACCESS_JOB_EDIT):
         return nopermission(request)
 
     # form
@@ -55,7 +56,7 @@ def delete_shift(request, event_url_name, job_pk, shift_pk):
     event, job, shift, helper = get_or_404(event_url_name, job_pk, shift_pk)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, job, ACCESS_JOB_EDIT):
         return nopermission(request)
 
     # form
@@ -69,7 +70,6 @@ def delete_shift(request, event_url_name, job_pk, shift_pk):
             'user': request.user,
             'event': event,
             'shift': shift,
-            'shift_pk': shift_pk,
         })
 
         # redirect to shift

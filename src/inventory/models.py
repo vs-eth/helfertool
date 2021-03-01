@@ -1,8 +1,9 @@
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.exceptions import MultipleObjectsReturned
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
 
+from copy import deepcopy
 from datetime import datetime
 
 from .exceptions import WrongHelper, InvalidMultipleAssignment, NotAssigned, \
@@ -19,7 +20,7 @@ class Inventory(models.Model):
     )
 
     admins = models.ManyToManyField(
-        User,
+        get_user_model(),
         blank=True,
         verbose_name=_("Administrators of inventory"),
     )
@@ -142,6 +143,17 @@ class InventorySettings(models.Model):
         Inventory,
         verbose_name=_("Available inventory"),
     )
+
+    def duplicate(self, event):
+        new_settings = deepcopy(self)
+        new_settings.pk = None
+        new_settings.event = event
+        new_settings.save()
+
+        for inventory in self.available_inventory.all():
+            new_settings.available_inventory.add(inventory)
+
+        return new_settings
 
     def __str__(self):
         return self.event.name

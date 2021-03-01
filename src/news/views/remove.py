@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import render, redirect
 from django.utils.translation import ugettext as _
 
@@ -8,11 +10,15 @@ from registration.views.utils import nopermission
 from ..forms import RemoveForm
 
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.news")
 
 
 @login_required
 def remove(request):
+    # check if feature is available
+    if not settings.FEATURES_NEWSLETTER:
+        raise Http404
+
     # must be superuser
     if not request.user.is_superuser:
         return nopermission(request)
@@ -24,6 +30,7 @@ def remove(request):
         messages.success(request, _("Recipient removed."))
 
         logger.info("newsletter removed", extra={
+            'user': request.user,
             'email': email,
         })
 

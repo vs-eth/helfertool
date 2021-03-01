@@ -21,12 +21,12 @@ docker_prevent_push=0
 # get version from git and do sanity check with version.txt, returns release series
 get_release_series()
 {
-    version="$(git describe | sed 's/^v//g')"
+    version="$(git describe --abbrev=0 | sed 's/^v//g')"
 
     # sanity check: is the version.txt file the same?
     file_version="$(cat src/version.txt)"
     if [ "$version" != "$file_version" ] ; then
-        echo "Version from git and version.txt inconsistent!"
+        echo "Version from git and version.txt inconsistent!" >&2
         exit 1
     fi
 
@@ -36,8 +36,8 @@ get_release_series()
 # behavior depends on branch
 git_branch="$(git rev-parse --abbrev-ref HEAD)"
 
-if [ "$git_branch" = "master" ] ; then
-    # we are on master -> do a stable release and update the latest tag
+if [ "$git_branch" = "main" ] ; then
+    # we are on main -> do a stable release and update the latest tag
     docker_tag="$(get_release_series)"
     docker_update_latest=1
 elif [ "$(echo "$git_branch" | grep "^lts/")" != "" ] ; then

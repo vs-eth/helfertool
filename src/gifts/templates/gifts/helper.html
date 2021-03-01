@@ -1,91 +1,140 @@
-{% load i18n %}
-{% load bootstrap4 %}
-{% load gifts %}
+{% load i18n bootstrap4 gifts icons static %}
 
 {# will be included by registration/admin/view_helper.html #}
 
-<form action="" method="post" enctype="multipart/form-data">
-    {% csrf_token %}
+<div class="row">
+    {% if helper.shifts.count != 0 %}
+        <div class="col-lg-12">
+            <table class="shifts" aria-describedby="gifts-header">
+                {% for shift in helper.shifts.all|dictsort:"begin" %}
+                    <tr>
+                        <th class="align-top" scope="row">
+                            {% helper_has_missed_shift helper shift as missed_shift %}
 
-    <div class="row">
-        <div class="col-xs-12 col-lg-5">
-            {% bootstrap_field form.deposit %}
-            {% bootstrap_field form.deposit_returned %}
-
-            {% if helper.event.ask_shirt %}
-                {% bootstrap_field form.got_shirt %}
-                {% bootstrap_field form.buy_shirt %}
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="row">
-        {% if helper.shifts.count != 0 %}
-            <div class="col-lg-12">
-                <table class="shifts">
-                    {% for shift in helper.shifts.all|dictsort:"begin" %}
-                        <tr>
-                            <th class="align-top">
-                                {{ shift }}
-
-                                <br /><br />
-
-                                {{ form | lookup_deservedgiftset_present:shift.pk }}
-                                <label for="id_present_{{ shift.pk }}">
-                                    {% trans "Present" %}
-                                </label>
-                            </th>
-
-                            {% gifts_for_shift form shift as deserved_gifts %}
-                            {% if deserved_gifts %}
-                                {% for deserved_gift in deserved_gifts %}
-                                    <td>
-                                        <div class="align-top">
-                                            {{ form | lookup_deservedgiftset_delivered:deserved_gift.pk }}
-                                            <label for="id_delivered_{{ deserved_gift.pk }}">
-                                                {% trans "Delivered" %}
-                                            </label>
-                                        </div>
-
-                                        <ul>
-                                            {{ gift_set }}
-                                            {% for gift in deserved_gift.gift_set.includedgift_set.all %}
-                                                <li>{{ gift.count }} {{ gift.gift.name }}</li>
-                                            {% endfor %}
-                                        </ul>
-                                    </td>
-                                {% endfor %}
+                            {% if missed_shift %}
+                                <span class="text-danger">{{ shift }}</span>
                             {% else %}
-                                <td>
-                                    <span class="text-muted">{% trans "No gifts" %}</span>
-                                </td>
+                                {{ shift }}
                             {% endif %}
+
+                            <br /><br />
+
+                            {{ form | lookup_helpersgifts_present:shift.pk }}
+                        </th>
+
+                        {% gifts_for_shift form shift as deserved_gifts %}
+                        {% if deserved_gifts %}
+                            {% for deserved_gift in deserved_gifts %}
+                                <td>
+                                    {% helper_shift_requires_deposit helper shift as shift_requires_deposit %}
+                                    <div class="align-top delivery{% if not shift_requires_deposit %} nodeposit{%endif%}"
+                                         data-original="{{ deserved_gift.delivered }}">
+                                        {{ form | lookup_helpersgifts_delivered:deserved_gift.pk }}
+                                        <label for="id_gifts-delivered_{{ deserved_gift.pk }}">{% trans "Delivered" %}</label>
+                                    </div>
+
+                                    <ul>
+                                        {% for gift in deserved_gift.gift_set.includedgift_set.all %}
+                                            <li>{{ gift.count }} {{ gift.gift.name }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </td>
+                            {% endfor %}
+                        {% else %}
+                            <td>
+                                <span class="text-muted">{% trans "No gifts" %}</span>
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <h4 id="gifts-summary">{% trans "Summary" %}</h4>
+        {% with gift_sum=helper.gifts.gifts_sum.items %}
+        {% if gift_sum %}
+            <div>
+                <table class="table" aria-describedby="gifts-summary">
+                    <tr>
+                        <th scope="col">{% trans "Gift" %}</th>
+                        <th scope="col">{% trans "Total" %}</th>
+                        <th scope="col">{% trans "Given" %}</th>
+                        <th scope="col">
+                            {% trans "Pending (with deposit)" %}
+                            <br />
+                            <span class="text-muted font-weight-normal">{% trans "Including future shifts" %}</span>
+                        </th>
+                        <th scope="col">
+                            {% trans "Pending" %}
+                            <br />
+                            <span class="text-muted font-weight-normal">{% trans "Helper was present" %}</span>
+                        </th>
+                    </tr>
+
+                    {% for name,numbers in gift_sum %}
+                        <tr>
+                            <th scope="row">{{ name }}</th>
+                            <td>{{ numbers.total }}</td>
+                            <td>{{ numbers.given }}</td>
+                            <td>
+                                {% if numbers.pending_with_deposit > 0 %}
+                                    <span class="text-warning"><strong>{{ numbers.pending_with_deposit }}</strong></span>
+                                {% else %}
+                                    <span class="text-success">{{ numbers.pending_with_deposit }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if numbers.pending > 0 %}
+                                    <span class="text-warning"><strong>{{ numbers.pending }}</strong></span>
+                                {% else %}
+                                    <span class="text-success">{{ numbers.pending }}</span>
+                                {% endif %}
+                            </td>
+
                         </tr>
                     {% endfor %}
+
+                    <tr>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>
+                            <input type="checkbox" id="set_all_deposit_pending_gifts" onclick="all_gifts_delivered(this, true);" >
+                            <label for ="set_all_deposit_pending_gifts">{% trans "All delivered" %}</label>
+                        </td>
+                        <td>
+                            <input type="checkbox" id="set_all_pending_gifts" onclick="all_gifts_delivered(this, false);" >
+                            <label for ="set_all_pending_gifts">{% trans "All delivered" %}</label>
+                        </td>
+                    </tr>
                 </table>
             </div>
+        {% endif %}
+        {% endwith %}
+    {% endif %}
+</div>
 
-            {% if helper.gifts.gifts_sum.items %}
-                <div class="col-xs-12 col-lg-5">
-                    <table class="table">
-                        <tr>
-                            <th>{% trans "Gift" %}</th>
-                            <th>{% trans "Given" %}</th>
-                            <th>{% trans "Total" %}</th>
-                        </tr>
-
-                        {% for name,numbers in helper.gifts.gifts_sum.items %}
-                            <tr>
-                                <td>{{ name }}</td>
-                                <td>{{ numbers.given }}</td>
-                                <td>{{ numbers.total }}</td>
-                            </tr>
-                        {% endfor %}
-                    </table>
-                </div>
-            {% endif %}
+<div class="row">
+    <div class="col-xs-12 col-lg-5">
+        {% bootstrap_field form.deposit layout='horizontal' %}
+    </div>
+    <div class="col-xs-12 col-lg-5">
+        {% if default_deposit %}
+            <a class="btn btn-sm btn-outline-primary" onclick="set_default_deposit({{ default_deposit }}); return false;" href="">
+                {% trans "Set to default" %}
+            </a>
         {% endif %}
     </div>
+</div>
+<div class="row">
+    <div class="col-xs-12 col-lg-5">
+        {% bootstrap_field form.deposit_returned %}
 
-    <input type="submit" value="{% trans "Save" %}" class="btn btn-outline-primary" />
-</form>
+        {% if helper.event.ask_shirt %}
+            {% bootstrap_field form.got_shirt %}
+            {% bootstrap_field form.buy_shirt %}
+        {% endif %}
+    </div>
+</div>
+
+<script src="{% static "helfertool/js/gifts.js" %}"></script>

@@ -3,10 +3,11 @@ from django.db.models import Sum, Count, ExpressionWrapper, F, fields
 from django.db.utils import OperationalError
 from django.shortcuts import render, get_object_or_404
 
+from badges.models import SpecialBadges
 from registration.decorators import archived_not_available
 from registration.models import Event, Shift
-
 from registration.views.utils import nopermission
+from registration.permissions import has_access, ACCESS_STATISTICS_VIEW
 
 
 @login_required
@@ -15,7 +16,7 @@ def overview(request, event_url_name):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_STATISTICS_VIEW):
         return nopermission(request)
 
     num_helpers = event.helper_set.count()
@@ -50,6 +51,11 @@ def overview(request, event_url_name):
         else:
             raise e
 
+    if event.badges:
+        num_specialbadges = SpecialBadges.objects.filter(event=event).aggregate(Sum('number'))['number__sum'] or 0
+    else:
+        num_specialbadges = 0
+
     # render
     context = {'event': event,
                'num_helpers': num_helpers,
@@ -57,5 +63,6 @@ def overview(request, event_url_name):
                'num_vegetarians': num_vegetarians,
                'num_shift_slots': num_shift_slots,
                'num_empty_shift_slots': num_empty_shift_slots,
+               'num_specialbadges': num_specialbadges,
                'hours_total': hours_total}
     return render(request, 'statistic/overview.html', context)

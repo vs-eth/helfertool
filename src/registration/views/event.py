@@ -2,38 +2,39 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.http import HttpResponseRedirect
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.translation import ugettext as _
 
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 import logging
-logger = logging.getLogger("helfertool")
+logger = logging.getLogger("helfertool.registration")
 
-from account.templatetags.permissions import has_addevent_group
+from account.templatetags.globalpermissions import has_addevent_group
 
-from .utils import is_admin, nopermission
+from .utils import nopermission
 
 from ..decorators import archived_not_available
-from ..forms import EventForm, EventDeleteForm, EventArchiveForm, EventDuplicateForm
-from ..models import Event
+from ..forms import EventForm, EventAdminRolesForm, EventAdminRolesAddForm, EventDeleteForm, EventArchiveForm, \
+    EventDuplicateForm, EventMoveForm, PastEventForm
+from ..models import Event, EventAdminRoles
+from ..permissions import has_access, ACCESS_EVENT_EDIT
 
 
 @login_required
 def edit_event(request, event_url_name=None):
-    # TODO shorten
+    event = None
+
     # check permission
     if event_url_name:
-        # event exists -> superuser or admin
-        if not is_admin(request.user, event_url_name):
+        event = get_object_or_404(Event, url_name=event_url_name)
+        if not has_access(request.user, event, ACCESS_EVENT_EDIT):
             return nopermission(request)
     else:
         # event will be created -> superuser or addevent group
         if not (request.user.is_superuser or has_addevent_group(request.user)):
             return nopermission(request)
-
-    # get event
-    event = None
-    if event_url_name:
-        event = get_object_or_404(Event, url_name=event_url_name)
 
     # handle form
     form = EventForm(request.POST or None, request.FILES or None,
@@ -80,11 +81,71 @@ def edit_event(request, event_url_name=None):
 
 
 @login_required
+def edit_event_admins(request, event_url_name=None):
+    event = get_object_or_404(Event, url_name=event_url_name)
+
+    # check permission
+    if not has_access(request.user, event, ACCESS_EVENT_EDIT):
+        return nopermission(request)
+
+    # one form per existing admin (differentiated by prefix)
+    all_forms = []
+    event_admin_roles = EventAdminRoles.objects.filter(event=event)
+    for event_admin in event_admin_roles:
+        form = EventAdminRolesForm(request.POST or None,
+                                   instance=event_admin,
+                                   prefix='user_{}'.format(event_admin.user.pk))
+        all_forms.append(form)
+
+    # another form to add one new admin
+    add_form = EventAdminRolesAddForm(request.POST or None, prefix='add', event=event)
+
+    # we got a post request -> save
+    if request.POST and (all_forms or add_form.is_valid()):
+        # remove users without any role from admins (no roles = invalid forms)
+        for form in all_forms:
+            if form.is_valid():
+                if form.has_changed():
+                    logger.info("event adminchanged", extra={
+                        'user': request.user,
+                        'event': event,
+                        'changed_user': form.instance.user.username,
+                        'roles': ','.join(form.instance.roles),
+                    })
+                    form.save()
+            else:
+                logger.info("event adminremoved", extra={
+                    'user': request.user,
+                    'event': event,
+                    'changed_user': form.instance.user.username,
+                })
+                form.instance.delete()
+
+        # and save the form for a new admin
+        if add_form.is_valid():
+            new_admin = add_form.save()
+
+            if new_admin:
+                logger.info("event adminadded", extra={
+                    'user': request.user,
+                    'event': event,
+                    'changed_user': new_admin.user.username,
+                    'roles': ','.join(new_admin.roles),
+                })
+            return redirect('edit_event_admins', event_url_name=event_url_name)
+
+    context = {'event': event,
+               'forms': all_forms,
+               'add_form': add_form}
+    return render(request, 'registration/admin/edit_event_admins.html', context)
+
+
+@login_required
 def delete_event(request, event_url_name):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_EVENT_EDIT):
         return nopermission(request)
 
     # form
@@ -116,7 +177,7 @@ def archive_event(request, event_url_name):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_EVENT_EDIT):
         return nopermission(request)
 
     # form
@@ -144,7 +205,7 @@ def duplicate_event(request, event_url_name):
     event = get_object_or_404(Event, url_name=event_url_name)
 
     # check permission
-    if not event.is_admin(request.user):
+    if not has_access(request.user, event, ACCESS_EVENT_EDIT):
         return nopermission(request)
 
     # form
@@ -170,3 +231,56 @@ def duplicate_event(request, event_url_name):
     context = {'event': event,
                'form': form}
     return render(request, 'registration/admin/duplicate_event.html', context)
+
+
+@login_required
+@archived_not_available
+def move_event(request, event_url_name):
+    event = get_object_or_404(Event, url_name=event_url_name)
+
+    # check permission
+    if not has_access(request.user, event, ACCESS_EVENT_EDIT):
+        return nopermission(request)
+
+    # form
+    form = EventMoveForm(request.POST or None, instance=event)
+
+    if form.is_valid():
+        event = form.save()
+
+        logger.info("event moved", extra={
+            'user': request.user,
+            'event': event,
+            'new_date': event.date,
+        })
+
+        messages.success(request, _("Event was moved: %(event)s") % {'event': event.name})
+
+        return HttpResponseRedirect(reverse('edit_event', args=[event_url_name, ]))
+
+    # render page
+    context = {'event': event,
+               'form': form}
+    return render(request, 'registration/admin/move_event.html', context)
+
+
+@login_required
+def past_events(request):
+    if not request.user.is_superuser:
+        return nopermission(request)
+
+    # form for months
+    months = 4  # the default value
+    form = PastEventForm(request.GET or None, initial={'months': months})
+    if form.is_valid():
+        months = form.cleaned_data.get('months')
+
+    # get events
+    deadline = datetime.today() - relativedelta(months=months)
+    events = Event.objects.filter(archived=False, date__lte=deadline).order_by('date')
+
+    context = {
+        'form': form,
+        'events': events,
+    }
+    return render(request, 'registration/admin/past_events.html', context)

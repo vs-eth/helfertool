@@ -8,6 +8,7 @@ from django.utils.translation import ugettext_lazy as _
 
 from collections import OrderedDict
 from copy import deepcopy
+from datetime import datetime
 
 import math
 
@@ -139,8 +140,21 @@ class Shift(models.Model):
         return int(round(float(num) / self.number * 100.0, 0))
 
     def helpers_percent_5percent(self):
+        """
+        Returns the percentage of registered helpers in 5% steps.
+        So the returned value is between 0 and 20 (including both values).
+
+        This is used to generate the CSS class names defined in style.css.
+        Therefore, inline CSS can be avoided.
+        """
         percent = self.helpers_percent()
         return math.ceil(percent / 5)
+
+    def helpers_percent_vacant_5percent(self):
+        """
+        Same as `helpers_percent_5percent`, but for the missing helpers.
+        """
+        return 20 - self.helpers_percent_5percent()
 
     @property
     def shirt_sizes(self):
@@ -180,13 +194,7 @@ class Shift(models.Model):
 
         # maybe just the date is changed
         if new_date:
-            new_shift.begin = new_shift.begin.replace(year=new_date.year)
-            new_shift.begin = new_shift.begin.replace(month=new_date.month)
-            new_shift.begin = new_shift.begin.replace(day=new_date.day)
-
-            new_shift.end = new_shift.end.replace(year=new_date.year)
-            new_shift.end = new_shift.end.replace(month=new_date.month)
-            new_shift.end = new_shift.end.replace(day=new_date.day)
+            new_shift.move_date(new_date)
 
         # now save that
         new_shift.save()
@@ -199,6 +207,24 @@ class Shift(models.Model):
                 new_shift.gifts.add(gift)
 
         return new_shift
+
+    def move_date(self, new_date):
+        # current begin and end in local time
+        old_begin_localtime = localtime(self.begin)
+        old_end_localtime = localtime(self.end)
+
+        # move date alone without chainging time
+        diff_days = new_date - old_begin_localtime.date()
+
+        new_begin_date = old_begin_localtime.date() + diff_days
+        new_end_date = old_end_localtime.date() + diff_days
+
+        # set time separately (10 am should always be 10 am, also when a time change is between old and new date)
+        begin_time = old_begin_localtime.time()
+        end_time = old_end_localtime.time()
+
+        self.begin = datetime.combine(new_begin_date, begin_time)
+        self.end = datetime.combine(new_end_date, end_time)
 
 
 @receiver(pre_delete, sender=Shift)
